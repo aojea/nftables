@@ -1,10 +1,12 @@
 package nftest
 
 import (
+	"log"
 	"runtime"
 	"testing"
 
 	"github.com/google/nftables"
+	"github.com/mdlayher/netlink"
 	"github.com/vishvananda/netns"
 )
 
@@ -26,7 +28,31 @@ func OpenSystemConn(t *testing.T, enableSysTests bool) (*nftables.Conn, netns.Ns
 	if err != nil {
 		t.Fatalf("netns.New() failed: %v", err)
 	}
-	c, err := nftables.New(nftables.WithNetNSFd(int(ns)))
+	opts := []nftables.ConnOption{nftables.WithNetNSFd(int(ns))}
+	if false {
+		opts = append(opts, nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+			for _, msg := range req {
+				log.Printf("header:\n%d\n%s | %s\n%d\n%d\n",
+					msg.Header.Length,
+					msg.Header.Type.String(), msg.Header.Flags.String(),
+					msg.Header.Sequence,
+					msg.Header.PID)
+				log.Printf("data:\n%s", nfdump(msg.Data))
+				ad, err := netlink.NewAttributeDecoder(msg.Data)
+				if err != nil {
+					log.Printf("failed to create attribute decoder: %v", err)
+					continue
+				}
+				for ad.Next() {
+					log.Printf("tlv:\n%d|%d|%d", ad.Type(), ad.Len(), ad.TypeFlags())
+					log.Printf("attr:%s\n", ad.String())
+				}
+			}
+			return req, nil
+		}))
+	}
+
+	c, err := nftables.New(opts...)
 	if err != nil {
 		t.Fatalf("nftables.New() failed: %v", err)
 	}
